@@ -28,10 +28,6 @@ DEFAULT_DEVICE = '0'
 DEFAULT_NAME = 'Tivo Receiver'
 DEFAULT_PORT = 31339
 
-#sock = None
-#set this to the ip address of the tivo to control
-#tivo_address = "192.168.1.89"
-
 SUPPORT_TIVO = SUPPORT_PAUSE |\
     SUPPORT_PLAY_MEDIA | SUPPORT_STOP | SUPPORT_NEXT_TRACK |\
     SUPPORT_PREVIOUS_TRACK | SUPPORT_PLAY
