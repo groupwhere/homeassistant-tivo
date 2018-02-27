@@ -10,7 +10,7 @@ https://community.home-assistant.io/t/tivo-media-player-component/851
 https://charliemeyer.net/2012/12/04/remote-control-of-a-tivo-from-the-linux-command-line/
 ```
 
-So far, this code has a framework that is not fully implemented.  It should load if copied to the component directory.  It requires the following configuration:
+So far, this code has a framework that is not fully implemented.  It should load if copied to the component/media_player directory.  It requires the following configuration:
 
 ```
 media_player:
