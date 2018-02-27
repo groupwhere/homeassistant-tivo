@@ -18,3 +18,18 @@ media_player:
     port: 31339
     device: 0
 ```
+
+This works by opening a socket connection to the Tivo device on its default port 31339.  Then using the following protocol, it can perform several commands:
+
+https://www.tivo.com/assets/images/abouttivo/resources/downloads/brochures/TiVo_TCP_Network_Remote_Control_Protocol.pdf
+
+Then it reads the response and should try to parse that information to determine status.  Simply connecting without sending a command, as we do in __init__, responds with status such as:
+
+```
+CH_STATUS 0613 LOCAL
+```
+
+This means channel status, channel 613, and channel was set by the remote.  If we set the channel, it should say REMOTE instead of LOCAL, or RECORDING if a recording is in process.
+
+More to come...
+
