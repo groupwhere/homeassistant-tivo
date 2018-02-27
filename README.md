@@ -33,5 +33,15 @@ CH_STATUS 0613 LOCAL
 
 This means channel status, channel 613, and channel was set by the remote.  If we set the channel, it should say REMOTE instead of LOCAL, or RECORDING if a recording is in process.
 
+Goals:
+
+```
+1. Be able to perform channel up/down from hass
+2. Start recording, end recording
+3. switch and possibly navigate screens
+
+The protocol should be capable of the above but it is unclear to me how to connect that to hass.
+```
+
 More to come...
 
