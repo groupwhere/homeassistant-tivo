@@ -101,6 +101,23 @@ class TivoDevice(MediaPlayerDevice):
         self._ignore = {}
         self.sock = None
 
+        self.get_status()
+
+    def connect(self, host, port):
+        try:
+            _LOGGER.error("Connecting to Tivo...")
+            self.sock = socket.socket()
+            self.sock.settimeout(5)
+            self.sock.connect((host, port))
+#            self.sock.settimeout(None)
+        except Exception:
+            raise
+
+    def disconnect(self):
+        _LOGGER.error("Disconnecting from Tivo...")
+        self.sock.close()
+
+    def get_status(self):
         data = self.send_code('','')
         """ CH_STATUS 0645 LOCAL """
 
@@ -121,21 +138,7 @@ class TivoDevice(MediaPlayerDevice):
                 self._current["status"]  = "no status"
                 self._current["mode"]    = "none"
                 _LOGGER.error("Tivo did not respond correctly...")
-
-    def connect(self, host, port):
-        try:
-            _LOGGER.error("Connecting to Tivo...")
-            self.sock = socket.socket()
-            self.sock.settimeout(5)
-            self.sock.connect((host, port))
-#            self.sock.settimeout(None)
-        except Exception:
-            raise
-
-    def disconnect(self):
-        _LOGGER.error("Disconnecting from Tivo...")
-        self.sock.close()
-
+ 
     def send_code(self, code, cmdtype="IRCODE", extra=0, bufsize=1024):
         data = ""
         if extra:
@@ -348,7 +351,7 @@ class TivoDevice(MediaPlayerDevice):
         """Send rewind command."""
         if self._current["mode"] == "TV":
             self.media_ch_dn()
-        else
+        else:
             self.send_code('REVERSE', 'IRCODE', 0, 0)
 
     @property
@@ -356,6 +359,6 @@ class TivoDevice(MediaPlayerDevice):
         """Send fast forward command."""
         if self._current["mode"] == "TV":
             self.media_ch_up()
-        else
+        else:
             self.send_code('FORWARD', 'IRCODE', 0, 0)
 
