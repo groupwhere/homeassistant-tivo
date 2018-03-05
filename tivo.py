@@ -16,17 +16,16 @@ import os.path
 from homeassistant.components.media_player import (
     MEDIA_TYPE_TVSHOW, MEDIA_TYPE_VIDEO, SUPPORT_PAUSE, SUPPORT_PLAY_MEDIA,
     SUPPORT_TURN_OFF, SUPPORT_TURN_ON, SUPPORT_STOP, PLATFORM_SCHEMA,
-    SUPPORT_NEXT_TRACK, SUPPORT_PREVIOUS_TRACK, SUPPORT_PLAY,
-    MediaPlayerDevice)
+    SUPPORT_NEXT_TRACK, SUPPORT_PREVIOUS_TRACK, SUPPORT_PLAY, MediaPlayerDevice)
 from homeassistant.const import (
     CONF_DEVICE, CONF_HOST, CONF_NAME, STATE_OFF, STATE_PLAYING, CONF_PORT)
 import homeassistant.helpers.config_validation as cv
 
 _LOGGER = logging.getLogger(__name__)
 
-DEFAULT_DEVICE = '0'
 DEFAULT_NAME = 'Tivo Receiver'
 DEFAULT_PORT = 31339
+DEFAULT_DEVICE = '0'
 
 SUPPORT_TIVO = SUPPORT_PAUSE |\
     SUPPORT_PLAY_MEDIA | SUPPORT_STOP | SUPPORT_NEXT_TRACK |\
@@ -51,8 +50,10 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
 
     if CONF_HOST in config:
         hosts.append([
-            config.get(CONF_NAME), config.get(CONF_HOST),
-            config.get(CONF_PORT), config.get(CONF_DEVICE)
+            config.get(CONF_NAME),
+            config.get(CONF_HOST),
+            config.get(CONF_PORT),
+            config.get(CONF_DEVICE)
         ])
 
     elif discovery_info:
@@ -97,47 +98,73 @@ class TivoDevice(MediaPlayerDevice):
         self._port = port
         self._is_standby = False
         self._current = {}
+        self._ignore = {}
         self.sock = None
 
         data = self.send_code('','')
         """ CH_STATUS 0645 LOCAL """
 
         words = data.split()
-        _LOGGER.error("Channel:  %s", words[1])
-        _LOGGER.error("Status:  %s", words[2])
-        self._current["channel"] = words[1]
-        self._current["status"]  = words[2]
+        if words:
+            try:
+                _LOGGER.error("Channel: %s", words[1])
+                _LOGGER.error("Status:  %s", words[2])
+
+                if words[0] == "CH_STATUS":
+                    self._current["channel"] = words[1]
+                    self._current["title"]   = "Ch. " + words[1]
+                    self._current["status"]  = words[2]
+                    self._current["mode"]    = "TV"
+            except IndexError:
+                self._current["channel"] = "no channel"
+                self._current["title"]   = "no title"
+                self._current["status"]  = "no status"
+                self._current["mode"]    = "none"
+                _LOGGER.error("Tivo did not respond correctly...")
 
     def connect(self, host, port):
         try:
+            _LOGGER.error("Connecting to Tivo...")
             self.sock = socket.socket()
             self.sock.settimeout(5)
             self.sock.connect((host, port))
-            self.sock.settimeout(None)
+#            self.sock.settimeout(None)
         except Exception:
             raise
 
     def disconnect(self):
+        _LOGGER.error("Disconnecting from Tivo...")
         self.sock.close()
 
-    def send_code(self, code, cmdtype="IRCODE", extra=0):
+    def send_code(self, code, cmdtype="IRCODE", extra=0, bufsize=1024):
         data = ""
         if extra:
             code = code + " " + extra
         # can be IRCODE, KEYBOARD, or TELEPORT.  Usually it's IRCODE but we might switch to KEYBOARD since it can do more.
-        if not self.sock:
-            self.connect(self._host, self._port)
+#        if not self.sock:
+#            self.connect(self._host, self._port)
+
         try:
+            self.connect(self._host, self._port)
             tosend = cmdtype + " " + code + "\r"
-            _LOGGER.error("Sending request: %s", tosend)
+            _LOGGER.error("Sending request: '%s'", tosend)
 
             self.sock.sendall(tosend.encode())
-            data = self.sock.recv(1024);
+            data = self.sock.recv(bufsize);
             time.sleep(0.1)
-            _LOGGER.error("Received Tivo data: %s", data)
+            _LOGGER.error("Received Tivo data: '%s'", data)
+
+            self.disconnect()
             return data.decode()
         except Exception:
             raise
+
+    def channel_scan(self):
+        for i in range(1, self._channel_max):
+            res = self.send_code('SETCH', 'IRCODE', str(i))
+            words = res.split()
+            if words[0] == 'INVALID':
+                self._ignore.append(str(i))
 
     @property
     def name(self):
@@ -161,6 +188,7 @@ class TivoDevice(MediaPlayerDevice):
         """ Any client wishing to set a channel must wait for """
         """ LIVETV_READY before issuing a SETCH or FORCECH command. """
         data = self.send_code('LIVETV', 'TELEPORT')
+        self._current["mode"] = "TV"
         return data.decode()
 
     @property
@@ -169,6 +197,7 @@ class TivoDevice(MediaPlayerDevice):
         """Guide."""
         """ Also returns status as with NOWPLAYING, e.g. CH_STATUS 0613 LOCAL """
         data = self.send_code('GUIDE', 'TELEPORT')
+        self._current["mode"] = "GUIDE"
         return data.decode()
 
     @property
@@ -176,15 +205,15 @@ class TivoDevice(MediaPlayerDevice):
         data = ""
         """Tivo menu."""
         self.send_code('TIVO', 'TELEPORT')
+        self._current["mode"] = "MENU"
         return data.decode()
 
     @property
     def show_now(self):
         data = b""
         """Now playing."""
-        """ This is how we find out current status """
         data = self.send_code('NOWPLAYING', 'TELEPORT')
-        """ Ex: data = CH_STATUS 0613 LOCAL """
+        self._current["mode"] = "NOWPLAYING"
         return data.decode()
 
     @property
@@ -195,29 +224,38 @@ class TivoDevice(MediaPlayerDevice):
             self.send_code('SETCH', 'IRCODE', channel)
 
     @property
-    def media_next_track(self):
+    def media_ch_up(self):
         """Channel up."""
-        self.send_code('CHANNELUP')
+        if self._current["mode"] == "TV":
+            data = self.send_code('CHANNELUP')
+            words = data.split()
+            self._current["channel"] = words[1]
+            self._current["title"]   = "Ch. " + words[1]
+            self._current["status"]  = words[2]
 
     @property
-    def media_previous_track(self):
+    def media_ch_dn(self):
         """Channel down."""
-        self.send_code('CHANNELDOWN')
+        if self._current["mode"] == "TV":
+            data = self.send_code('CHANNELDOWN')
+            words = data.split()
+            self._current["channel"] = words[1]
+            self._current["title"]   = "Ch. " + words[1]
+            self._current["status"]  = words[2]
 
     @property
     def media_content_id(self):
         """Return the content ID of current playing media."""
         if self._is_standby:
             return None
-        #return self._current['programId']
-        return ""
+
+        return self._current["status"]
 
     @property
     def media_duration(self):
         """Return the duration of current playing media in seconds."""
-#        if self._is_standby:
-#            return None
-#        return self._current['duration']
+        if self._is_standby:
+            return None
 
         return ""
 
@@ -226,17 +264,31 @@ class TivoDevice(MediaPlayerDevice):
         """Return the title of current playing media."""
         if self._is_standby:
             return None
-        return ""
-        """ self._current['title'] """
+        return self._current['title']
 
     @property
     def media_series_title(self):
         """Return the title of current episode of TV show."""
         if self._is_standby:
             return None
-#        elif 'episodeTitle' in self._current:
-#            return self._current['episodeTitle']
+        elif 'episodeTitle' in self._current:
+            return self._current['episodeTitle']
         return ""
+
+    @property
+    def support_ch_dn(self):
+        """Boolean if channel down command supported."""
+        return bool(self.supported_features & SUPPORT_CHANNEL_STEP)
+
+    @property
+    def support_ch_up(self):
+        """Boolean if channel up command supported."""
+        return bool(self.supported_features & SUPPORT_CHANNEL_STEP)
+
+#    @property
+#    def support_ch_buttons(self):
+#        """Boolean if channel buttons supported."""
+#        return bool(self.supported_features & SUPPORT_CH_BUTTONS)
 
     @property
     def supported_features(self):
@@ -277,19 +329,33 @@ class TivoDevice(MediaPlayerDevice):
     @property
     def media_pause(self):
         """Send pause command."""
-        self.send_code('PAUSE')
+        self.send_code('PAUSE', 'IRCODE', 0, 0)
+        words = data.split()
+        return words[2]
 
     @property
     def media_stop(self):
         """Send stop command. NOT VALID! """
-        self.send_code('STOP')
+        if self._current["mode"] == "TV":
+            return "INTV"
+
+        data = self.send_code('STOP', 'IRCODE', 0, 0)
+        words = data.split()
+        return words[2]
 
     @property
     def media_previous_track(self):
         """Send rewind command."""
-        self.send_code('REVERSE')
+        if self._current["mode"] == "TV":
+            self.media_ch_dn()
+        else
+            self.send_code('REVERSE', 'IRCODE', 0, 0)
 
     @property
     def media_next_track(self):
         """Send fast forward command."""
-        self.send_code('FORWARD')
+        if self._current["mode"] == "TV":
+            self.media_ch_up()
+        else
+            self.send_code('FORWARD', 'IRCODE', 0, 0)
+
