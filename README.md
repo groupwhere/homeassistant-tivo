@@ -15,6 +15,11 @@ Working functions:
 Channel up and down - uses previous and next track buttons
 ```
 
+Available but not integrated into gui, etc:
+```
+1. Open guide, tivo menu, live tv, now playing
+```
+
 Copy tivo.py to your CONFIG_DIR/custom_components/media_player directory.  It requires the following configuration:
 
 ```
@@ -41,9 +46,8 @@ This means channel status, channel 613, and channel was set by the remote.  If w
 Goals:
 
 ```
-1. Be able to perform channel up/down from hass
-2. Start recording, end recording
-3. switch and possibly navigate screens
+1. Start recording, end recording
+2. switch and possibly navigate screens
 
 The protocol should be capable of the above but it is unclear to me how to connect that to hass.
 ```
