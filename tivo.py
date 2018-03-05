@@ -40,7 +40,6 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_DEVICE, default=DEFAULT_DEVICE): cv.string,
 })
 
-
 def setup_platform(hass, config, add_devices, discovery_info=None):
     """Set up the Tivo platform."""
     known_devices = hass.data.get(DATA_TIVO)
@@ -56,11 +55,12 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
             config.get(CONF_DEVICE)
         ])
 
+    # Discovery not tested and likely not working
     elif discovery_info:
         host = discovery_info.get('host')
         name = 'Tivo_' + discovery_info.get('serial', '')
 
-        # attempt to discover additional RVU units
+        # attempt to discover additional Tivo units
         try:
             resp = requests.get(
                 'http://%s:%d/info/getLocations' % (host, DEFAULT_PORT)).json()
@@ -86,7 +86,6 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     hass.data[DATA_TIVO] = known_devices
 
     return True
-
 
 class TivoDevice(MediaPlayerDevice):
     """Representation of a Tivo receiver on the network."""
@@ -143,9 +142,7 @@ class TivoDevice(MediaPlayerDevice):
         data = ""
         if extra:
             code = code + " " + extra
-        # can be IRCODE, KEYBOARD, or TELEPORT.  Usually it's IRCODE but we might switch to KEYBOARD since it can do more.
-#        if not self.sock:
-#            self.connect(self._host, self._port)
+            # can be IRCODE, KEYBOARD, or TELEPORT.  Usually it's IRCODE but we might switch to KEYBOARD since it can do more.
 
         try:
             self.connect(self._host, self._port)
@@ -169,12 +166,12 @@ class TivoDevice(MediaPlayerDevice):
             if words[0] == 'INVALID':
                 self._ignore.append(str(i))
 
+    # MediaPlayerDevice properties and methods
     @property
     def name(self):
         """Return the name of the device."""
         return self._name
 
-    # MediaPlayerDevice properties and methods
     @property
     def state(self):
         """Return the state of the device."""
@@ -182,7 +179,6 @@ class TivoDevice(MediaPlayerDevice):
             return STATE_OFF
         # Haven't determined a way to see if the content is paused
         return STATE_PLAYING
-        #return self.show_now()
 
     @property
     def show_live(self):
