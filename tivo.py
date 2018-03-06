@@ -366,7 +366,7 @@ class TivoDevice(MediaPlayerDevice):
         if self._is_standby:
              return
 
-        res = self.send_code('RECORD', 'IRCODE')
+        self.send_code('RECORD', 'IRCODE')
 
     @property
     def media_previous_track(self):
