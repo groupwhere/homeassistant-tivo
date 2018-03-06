@@ -349,7 +349,7 @@ class TivoDevice(MediaPlayerDevice):
 
     @property
     def media_stop(self):
-        """Send stop command. NOT VALID! """
+        """Send stop command. """
         if self._is_standby:
             return None
 
