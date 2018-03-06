@@ -181,6 +181,26 @@ class TivoDevice(MediaPlayerDevice):
         return STATE_PLAYING
 
     @property
+    def play(self):
+        """ Pause the current program """
+        res = self.send_code('PLAY', 'IRCODE')
+
+    @property
+    def pause(self):
+        """ Pause the current program """
+        res = self.send_code('PAUSE', 'IRCODE')
+
+    @property
+    def stop(self):
+        """ Stop playing the current program """
+        res = self.send_code('STOP', 'IRCODE')
+
+    @property
+    def record(self):
+        """ Start recording the current program """
+        res = self.send_code('RECORD', 'IRCODE')
+
+    @property
     def show_live(self):
         data = ""
         """Live TV. """
