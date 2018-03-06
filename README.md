@@ -12,7 +12,9 @@ https://charliemeyer.net/2012/12/04/remote-control-of-a-tivo-from-the-linux-comm
 
 Working functions:
 ```
-Channel up and down - uses previous and next track buttons
+1. Channel up and down - uses previous and next track buttons
+2. Power buttons
+3. FWD and REV
 ```
 
 Available but not integrated into gui, etc:
