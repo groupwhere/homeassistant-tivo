@@ -332,13 +332,18 @@ class TivoDevice(MediaPlayerDevice):
 
     @property
     def turn_on(self):
-        """Turn on the receiver.  NOPE"""
-        #self.send_code('poweron')
+        """Turn on the receiver. """
+         if self._is_standby == True
+            self.send_code('STANDBY','IRCODE')
+            self._is_standby = False
 
     @property
     def turn_off(self):
-        """Turn off the receiver. NOPE"""
-        #self.send_code('poweroff')
+        """Turn off the receiver. """
+        if self._is_standby == False
+            self.send_code('STANDBY','IRCODE')
+            self.send_code('STANDBY','IRCODE')
+            self._is_standby = True
 
     @property
     def media_play(self):
