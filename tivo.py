@@ -317,6 +317,9 @@ class TivoDevice(MediaPlayerDevice):
     @property
     def media_content_type(self):
         """Return the content type of current playing media."""
+        if self._is_standby:
+            return
+
         if 'episodeTitle' in self._current:
             return MEDIA_TYPE_TVSHOW
         return MEDIA_TYPE_VIDEO
@@ -333,14 +336,14 @@ class TivoDevice(MediaPlayerDevice):
     @property
     def turn_on(self):
         """Turn on the receiver. """
-         if self._is_standby == True
+        if self._is_standby:
             self.send_code('STANDBY','IRCODE')
             self._is_standby = False
 
     @property
     def turn_off(self):
         """Turn off the receiver. """
-        if self._is_standby == False
+        if self._is_standby == False:
             self.send_code('STANDBY','IRCODE')
             self.send_code('STANDBY','IRCODE')
             self._is_standby = True
@@ -348,11 +351,17 @@ class TivoDevice(MediaPlayerDevice):
     @property
     def media_play(self):
         """Send play command."""
+        if self._is_standby:
+            return
+
         self.send_code('PLAY')
 
     @property
     def media_pause(self):
         """Send pause command."""
+        if self._is_standby:
+            return None
+
         self.send_code('PAUSE', 'IRCODE', 0, 0)
         words = data.split()
         return words[2]
@@ -360,6 +369,9 @@ class TivoDevice(MediaPlayerDevice):
     @property
     def media_stop(self):
         """Send stop command. NOT VALID! """
+        if self._is_standby:
+            return None
+
         if self._current["mode"] == "TV":
             return "INTV"
 
@@ -370,6 +382,9 @@ class TivoDevice(MediaPlayerDevice):
     @property
     def media_previous_track(self):
         """Send rewind command."""
+        if self._is_standby:
+            return
+
         if self._current["mode"] == "TV":
             self.media_ch_dn()
         else:
@@ -378,6 +393,9 @@ class TivoDevice(MediaPlayerDevice):
     @property
     def media_next_track(self):
         """Send fast forward command."""
+        if self._is_standby:
+            return
+
         if self._current["mode"] == "TV":
             self.media_ch_up()
         else:
