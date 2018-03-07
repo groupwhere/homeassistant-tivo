@@ -15,7 +15,7 @@ Working functions:
 1. Channel up and down - uses previous and next track buttons
 2. Power buttons
 3. FWD and REV
-4. PLAY and PAUSE - needs testing
+4. PLAY and PAUSE
 ```
 
 Available but not integrated into gui, etc:
