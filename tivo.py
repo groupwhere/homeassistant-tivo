@@ -138,6 +138,9 @@ class TivoDevice(MediaPlayerDevice):
         """ e.g. CH_STATUS 0645 LOCAL """
 
         words = data.split()
+        self.set_status(words)
+
+    def set_status(self, words):
         if words:
             try:
                 _LOGGER.warning("Channel: %s", words[1])
@@ -154,7 +157,8 @@ class TivoDevice(MediaPlayerDevice):
                 self._current["status"]  = "no status"
                 self._current["mode"]    = "none"
                 _LOGGER.warning("Tivo did not respond correctly...")
- 
+
+
     def send_code(self, code, cmdtype="IRCODE", extra=0, bufsize=1024):
         data = ""
         if extra:
@@ -174,6 +178,7 @@ class TivoDevice(MediaPlayerDevice):
             data = self.sock.recv(bufsize);
             time.sleep(0.1)
             _LOGGER.warning("Received response: '%s'", data)
+            self.set_status(data.split())
 
             self.disconnect()
             return data.decode()
