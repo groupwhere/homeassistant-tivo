@@ -7,12 +7,14 @@ https://home-assistant.io/components/media_player.tivo/
 import voluptuous as vol
 import requests
 
+from datetime import timedelta
 import logging
 import socket
 import sys
 import time
 import os.path
 
+from homeassistant import util
 from homeassistant.components.media_player import (
     MEDIA_TYPE_TVSHOW, MEDIA_TYPE_VIDEO, SUPPORT_PAUSE, SUPPORT_PLAY_MEDIA,
     SUPPORT_TURN_OFF, SUPPORT_TURN_ON, SUPPORT_STOP, PLATFORM_SCHEMA,
@@ -20,12 +22,17 @@ from homeassistant.components.media_player import (
 from homeassistant.const import (
     CONF_DEVICE, CONF_HOST, CONF_NAME, STATE_OFF, STATE_PLAYING, CONF_PORT)
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.event import track_utc_time_change
+from homeassistant.util.json import load_json, save_json
 
 _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_NAME = 'Tivo Receiver'
 DEFAULT_PORT = 31339
 DEFAULT_DEVICE = '0'
+
+MIN_TIME_BETWEEN_SCANS = timedelta(seconds=10)
+MIN_TIME_BETWEEN_FORCED_SCANS = timedelta(seconds=1)
 
 SUPPORT_TIVO = SUPPORT_PAUSE |\
     SUPPORT_PLAY_MEDIA | SUPPORT_STOP | SUPPORT_NEXT_TRACK |\
@@ -86,6 +93,14 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     add_devices(tivos)
     hass.data[DATA_TIVO] = known_devices
 
+    track_utc_time_change(hass, lambda now: update_status(), second=30)
+
+    @util.Throttle(MIN_TIME_BETWEEN_SCANS, MIN_TIME_BETWEEN_FORCED_SCANS)
+    def update_status():
+        for tivo in tivos:
+            _LOGGER.warning("device: %s", tivo)
+            tivo.get_status()
+
     return True
 
 class TivoDevice(MediaPlayerDevice):
@@ -105,7 +120,7 @@ class TivoDevice(MediaPlayerDevice):
 
     def connect(self, host, port):
         try:
-            _LOGGER.error("Connecting to Tivo...")
+            _LOGGER.warning("Connecting to Tivo...")
             self.sock = socket.socket()
             self.sock.settimeout(5)
             self.sock.connect((host, port))
@@ -114,18 +129,19 @@ class TivoDevice(MediaPlayerDevice):
             raise
 
     def disconnect(self):
-        _LOGGER.error("Disconnecting from Tivo...")
+        _LOGGER.warning("Disconnecting from Tivo...")
         self.sock.close()
 
     def get_status(self):
+        _LOGGER.warning("Tivo get_status called...")
         data = self.send_code('','')
-        """ CH_STATUS 0645 LOCAL """
+        """ e.g. CH_STATUS 0645 LOCAL """
 
         words = data.split()
         if words:
             try:
-                _LOGGER.error("Channel: %s", words[1])
-                _LOGGER.error("Status:  %s", words[2])
+                _LOGGER.warning("Channel: %s", words[1])
+                _LOGGER.warning("Status:  %s", words[2])
 
                 if words[0] == "CH_STATUS":
                     self._current["channel"] = words[1]
@@ -137,7 +153,7 @@ class TivoDevice(MediaPlayerDevice):
                 self._current["title"]   = "no title"
                 self._current["status"]  = "no status"
                 self._current["mode"]    = "none"
-                _LOGGER.error("Tivo did not respond correctly...")
+                _LOGGER.warning("Tivo did not respond correctly...")
  
     def send_code(self, code, cmdtype="IRCODE", extra=0, bufsize=1024):
         data = ""
@@ -147,13 +163,17 @@ class TivoDevice(MediaPlayerDevice):
 
         try:
             self.connect(self._host, self._port)
-            tosend = cmdtype + " " + code + "\r"
-            _LOGGER.error("Sending request: '%s'", tosend)
+            if code:
+                tosend = cmdtype + " " + code + "\r"
+            else:
+                tosend = ""
+
+            _LOGGER.warning("Sending request: '%s'", tosend)
 
             self.sock.sendall(tosend.encode())
             data = self.sock.recv(bufsize);
             time.sleep(0.1)
-            _LOGGER.error("Received Tivo data: '%s'", data)
+            _LOGGER.warning("Received response: '%s'", data)
 
             self.disconnect()
             return data.decode()
@@ -216,14 +236,12 @@ class TivoDevice(MediaPlayerDevice):
         self._current["mode"] = "NOWPLAYING"
         return data.decode()
 
-    @property
     def channel_set(self, channel):
         """Channel set."""
         data = self.show_live()
         if(data == "LIVETV READY"):
             self.send_code('SETCH', 'IRCODE', channel)
 
-    @property
     def media_ch_up(self):
         """Channel up."""
         if self._current["mode"] == "TV":
@@ -233,7 +251,6 @@ class TivoDevice(MediaPlayerDevice):
             self._current["title"]   = "Ch. " + words[1]
             self._current["status"]  = words[2]
 
-    @property
     def media_ch_dn(self):
         """Channel down."""
         if self._current["mode"] == "TV":
@@ -368,24 +385,22 @@ class TivoDevice(MediaPlayerDevice):
 
         self.send_code('RECORD', 'IRCODE')
 
-    @property
     def media_previous_track(self):
         """Send rewind command."""
         if self._is_standby:
             return
 
-        if self._current["mode"] == "TV" | self._current["mode"] == "none":
+        if self._current["mode"] in ("TV", "none"):
             self.media_ch_dn()
         else:
             self.send_code('REVERSE', 'IRCODE', 0, 0)
 
-    @property
     def media_next_track(self):
         """Send fast forward command."""
         if self._is_standby:
             return
 
-        if self._current["mode"] == "TV" | self._current["mode"] == "none":
+        if self._current["mode"] in ("TV", "none"):
             self.media_ch_up()
         else:
             self.send_code('FORWARD', 'IRCODE', 0, 0)
