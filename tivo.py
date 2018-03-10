@@ -145,7 +145,7 @@ class TivoDevice(MediaPlayerDevice):
 
         if zapuser and zappass:
             self.usezap = True
-            self.zapget_channels()
+            self.zapget_data()
 
         self.get_status()
 
@@ -452,7 +452,7 @@ class TivoDevice(MediaPlayerDevice):
 
     def zap_update(self):
         if self.usezap:
-            self.zapget_channels()
+            self.zapget_data()
 
     def zaplogin(self):
         # Login and fetch a token
@@ -478,8 +478,8 @@ class TivoDevice(MediaPlayerDevice):
         self._country = self._zapprops['2003']
         (self._lineupId, self._device) = self._zapprops['2004'].split(':')
 
-    def zapget_channels(self):
-        _LOGGER.warning("zapget_channels called")
+    def zapget_data(self):
+        _LOGGER.warning("zapget_data called")
         self.zaplogin()
         now = int(time.time())
         self._channels = {}
@@ -498,12 +498,16 @@ class TivoDevice(MediaPlayerDevice):
         #self._zapraw = json.loads(self._raw)
         self._zapraw = json.loads(res.read().decode('utf8'))
 
+        self.zapget_channels()
+        self.zapget_titles()
+
+    def zapget_channels(self):
+        _LOGGER.warning("zapget_channels called")
         for channelData in self._zapraw['channels']:
             # Pad channel numbers to 4 chars to match values from Tivo device
             _ch = channelData['channelNo'].zfill(4)
             self._channels[_ch] = channelData['callSign']
 
-        self.zapget_titles()
 
     def zapget_titles(self):
         # Decode program titles from zap raw data
