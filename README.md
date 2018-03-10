@@ -16,6 +16,7 @@ Working functions:
 2. Power buttons
 3. FWD and REV
 4. PLAY and PAUSE
+5. Retrieval of program title info using zap2it - must use your own account information
 ```
 
 Available but not integrated into gui, etc:
@@ -32,7 +33,16 @@ media_player:
     name: Tivo
     port: 31339
     device: 0
+#    zapuser: your_zaptoit_email_login
+#    zappass: !secret zap2it_pass
 ```
+
+Do not add zapuser/zappass to configuration.yaml unless you have a valid Zap2iT account.
+Add your zap2it password into secrets.yaml - note that our example does not encode the password, which you can change:
+```
+zap2it_pass: whateverYouChose
+```
+
 
 This works by opening a socket connection to the Tivo device on its default port 31339.  Then using the following protocol, it can perform several commands:
 

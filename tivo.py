@@ -6,12 +6,16 @@ https://home-assistant.io/components/media_player.tivo/
 """
 import voluptuous as vol
 import requests
+import re
 
 from datetime import timedelta
 import logging
 import socket
 import sys
 import time
+import json
+import urllib
+from urllib.parse import urlencode
 import os.path
 
 from homeassistant import util
@@ -20,7 +24,7 @@ from homeassistant.components.media_player import (
     SUPPORT_TURN_OFF, SUPPORT_TURN_ON, SUPPORT_STOP, PLATFORM_SCHEMA,
     SUPPORT_NEXT_TRACK, SUPPORT_PREVIOUS_TRACK, SUPPORT_PLAY, MediaPlayerDevice)
 from homeassistant.const import (
-    CONF_DEVICE, CONF_HOST, CONF_NAME, STATE_OFF, STATE_PLAYING, CONF_PORT)
+    CONF_DEVICE, CONF_HOST, CONF_NAME, STATE_OFF, STATE_PLAYING, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.event import track_utc_time_change
 from homeassistant.util.json import load_json, save_json
@@ -31,8 +35,13 @@ DEFAULT_NAME = 'Tivo Receiver'
 DEFAULT_PORT = 31339
 DEFAULT_DEVICE = '0'
 
+CONF_ZAPUSER = 'zapuser'
+CONF_ZAPPASS = 'zappass'
+
 MIN_TIME_BETWEEN_SCANS = timedelta(seconds=10)
 MIN_TIME_BETWEEN_FORCED_SCANS = timedelta(seconds=1)
+MIN_TIME_BETWEEN_ZAPUPDATE = timedelta(seconds=3600)
+MIN_TIME_BETWEEN_FORCED_ZAPUPDATE = timedelta(seconds=1800)
 
 SUPPORT_TIVO = SUPPORT_PAUSE |\
     SUPPORT_PLAY_MEDIA | SUPPORT_STOP | SUPPORT_NEXT_TRACK |\
@@ -46,6 +55,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
     vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.port,
     vol.Optional(CONF_DEVICE, default=DEFAULT_DEVICE): cv.string,
+    vol.Optional(CONF_ZAPUSER, default=""): cv.string,
+    vol.Optional(CONF_ZAPPASS, default=""): cv.string
 })
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
@@ -60,7 +71,9 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
             config.get(CONF_NAME),
             config.get(CONF_HOST),
             config.get(CONF_PORT),
-            config.get(CONF_DEVICE)
+            config.get(CONF_DEVICE),
+            config.get(CONF_ZAPUSER),
+            config.get(CONF_ZAPPASS)
         ])
 
     # Discovery not tested and likely not working
@@ -94,6 +107,7 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     hass.data[DATA_TIVO] = known_devices
 
     track_utc_time_change(hass, lambda now: update_status(), second=30)
+    track_utc_time_change(hass, lambda now: zap2it_update(), second=3600)
 
     @util.Throttle(MIN_TIME_BETWEEN_SCANS, MIN_TIME_BETWEEN_FORCED_SCANS)
     def update_status():
@@ -101,20 +115,37 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
             _LOGGER.warning("device: %s", tivo)
             tivo.get_status()
 
+    @util.Throttle(MIN_TIME_BETWEEN_ZAPUPDATE, MIN_TIME_BETWEEN_FORCED_ZAPUPDATE)
+    def zap2it_update():
+        for tivo in tivos:
+            _LOGGER.warning("device: %s", tivo)
+            tivo.zap_update()
+
     return True
 
 class TivoDevice(MediaPlayerDevice):
     """Representation of a Tivo receiver on the network."""
 
-    def __init__(self, name, host, port, device):
+    def __init__(self, name, host, port, device, zapuser, zappass):
         """Initialize the device."""
         self._name = name
         self._host = host
         self._port = port
+
+        self._zapuser = zapuser
+        self._zappass = zappass
+        self.usezap = False
+
+        self._channels = {}
+        self._titles = {}
         self._is_standby = False
         self._current = {}
         self._ignore = {}
         self.sock = None
+
+        if zapuser and zappass:
+            self.usezap = True
+            self.zapget_channels()
 
         self.get_status()
 
@@ -124,7 +155,6 @@ class TivoDevice(MediaPlayerDevice):
             self.sock = socket.socket()
             self.sock.settimeout(5)
             self.sock.connect((host, port))
-#            self.sock.settimeout(None)
         except Exception:
             raise
 
@@ -143,21 +173,28 @@ class TivoDevice(MediaPlayerDevice):
     def set_status(self, words):
         if words:
             try:
-                _LOGGER.warning("Channel: %s", words[1])
-                _LOGGER.warning("Status:  %s", words[2])
-
                 if words[0] == "CH_STATUS":
+                    #_LOGGER.warning("Got channel status")
                     self._current["channel"] = words[1]
                     self._current["title"]   = "Ch. " + words[1]
                     self._current["status"]  = words[2]
                     self._current["mode"]    = "TV"
+
+                if self.usezap:
+                    ch  = str(self._channels.get(words[1]))
+                    num = str(words[1])
+                    ti  = str(self._titles.get(words[1]))
+                    _LOGGER.warning("Channel: %s", ch)
+                    _LOGGER.warning("Title:   %s", ti)
+
+                    self._current["title"] = "Ch. " + num + " " + ch + ": " + ti
+
             except IndexError:
                 self._current["channel"] = "no channel"
                 self._current["title"]   = "no title"
                 self._current["status"]  = "no status"
                 self._current["mode"]    = "none"
                 _LOGGER.warning("Tivo did not respond correctly...")
-
 
     def send_code(self, code, cmdtype="IRCODE", extra=0, bufsize=1024):
         data = ""
@@ -174,11 +211,14 @@ class TivoDevice(MediaPlayerDevice):
 
             _LOGGER.warning("Sending request: '%s'", tosend)
 
-            self.sock.sendall(tosend.encode())
-            data = self.sock.recv(bufsize);
-            time.sleep(0.1)
-            _LOGGER.warning("Received response: '%s'", data)
-            self.set_status(data.split())
+            try:
+                self.sock.sendall(tosend.encode())
+                data = self.sock.recv(bufsize)
+                time.sleep(0.1)
+                _LOGGER.warning("Received response: '%s'", data)
+            except socket.timeout:
+                _LOGGER.warning("Connection timed out...")
+                data = b'no_channel Video'
 
             self.disconnect()
             return data.decode()
@@ -366,8 +406,8 @@ class TivoDevice(MediaPlayerDevice):
             return None
 
         self.send_code('PAUSE', 'IRCODE', 0, 0)
-        words = data.split()
-        return words[2]
+#        words = data.split()
+#        return words[2]
 
     @property
     def media_stop(self):
@@ -409,4 +449,105 @@ class TivoDevice(MediaPlayerDevice):
             self.media_ch_up()
         else:
             self.send_code('FORWARD', 'IRCODE', 0, 0)
+
+    def zap_update(self):
+        if self.usezap:
+            self.zapget_channels()
+
+    def zaplogin(self):
+        # Login and fetch a token
+        host = 'https://tvlistings.zap2it.com/'
+        loginpath = 'api/user/login'
+        favpath = 'api/user/favorites'
+        login = host + loginpath
+
+        tosend = {'emailid': self._zapuser, 'password': self._zappass, 'usertype': '0', 'facebookuser': 'false'}
+        tosend_json = json.dumps(tosend).encode('utf8')
+        header = {'content-type': 'application/json'}
+
+        req = urllib.request.Request(url=login, data=tosend_json, headers=header, method='POST')
+        res = urllib.request.urlopen(req, timeout=5)
+
+        rawrtrn = res.read().decode('utf8')
+        rtrn = json.loads(rawrtrn)
+
+        self._token = rtrn['token']
+        self._zapprops = rtrn['properties']
+
+        self._zipcode = self._zapprops['2002']
+        self._country = self._zapprops['2003']
+        (self._lineupId, self._device) = self._zapprops['2004'].split(':')
+
+    def zapget_channels(self):
+        _LOGGER.warning("zapget_channels called")
+        self.zaplogin()
+        now = int(time.time())
+        self._channels = {}
+        zap_params = self.get_zap_params()
+        host = 'https://tvlistings.zap2it.com/'
+
+        param = '?time=' + str(now) + '&timespan=1&pref=-&' + urlencode(zap_params) + '&TMSID=&FromPage=TV%20Grid&ActivityID=1&OVDID=&isOverride=true'
+        url = host + 'api/grid' + param
+
+        header = {'X-Requested-With': 'XMLHttpRequest'}
+
+        req = urllib.request.Request(url=url,headers=header, method='GET')
+        res = urllib.request.urlopen(req, timeout=5)
+
+        #self._raw = res.read().decode('utf8')
+        #self._zapraw = json.loads(self._raw)
+        self._zapraw = json.loads(res.read().decode('utf8'))
+
+        for channelData in self._zapraw['channels']:
+            # Pad channel numbers to 4 chars to match values from Tivo device
+            _ch = channelData['channelNo'].zfill(4)
+            self._channels[_ch] = channelData['callSign']
+
+        self.zapget_titles()
+
+    def zapget_titles(self):
+        # Decode program titles from zap raw data
+        _LOGGER.warning("zapget_titles called")
+        self._titles = {}
+
+        for channelData in self._zapraw['channels']:
+            _ch = channelData['channelNo'].zfill(4)
+            _ev = channelData['events']
+            tmp = _ev[0]
+            prog = tmp['program']
+            title = prog['title']
+
+            self._titles[_ch] = title
+
+        #_LOGGER.warning("Titles: %s", self._titles)
+
+    def get_zap_params(self):
+        zparams = {}
+
+        self._postalcode = self._zipcode
+        country = 'USA'
+        device = 'X'
+
+        if re.match('[A-z]', self._zipcode):
+            country = 'CAN'
+
+            print("testing zlineupid: %s\n" % zlineupId)
+            if re.match(':', zlineupId):
+                (lineupId, device) = zlineupId.split(':')
+            else:
+                lineupId = zlineupId
+                device   = '-'
+
+            zparams['postalCode'] = self._postalcode
+        else:
+            zparams['token'] = self._token
+
+        zparams['lineupId']    = self._country + '-' + self._lineupId + '-DEFAULT'
+        zparams['headendId']   = self._lineupId
+        zparams['device']      = device
+        zparams['postalCode']  = self._postalcode
+        zparams['country']     = self._country
+        zparams['aid']         = 'gapzap'
+
+        return zparams
 
