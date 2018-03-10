@@ -455,6 +455,8 @@ class TivoDevice(MediaPlayerDevice):
         else:
             self.send_code('REVERSE', 'IRCODE', 0, 0)
 
+        self.get_status()
+
     def media_next_track(self):
         """Send fast forward command."""
         if self._is_standby:
@@ -464,6 +466,8 @@ class TivoDevice(MediaPlayerDevice):
             self.media_ch_up()
         else:
             self.send_code('FORWARD', 'IRCODE', 0, 0)
+
+        self.get_status()
 
     def zap_update(self):
         if self.usezap:
@@ -487,6 +491,8 @@ class TivoDevice(MediaPlayerDevice):
         rtrn = json.loads(rawrtrn)
 
         self._token = rtrn['token']
+        if self.debug:
+             _LOGGER.warning("Zap token: %s", self._token)
         self._zapprops = rtrn['properties']
 
         self._zipcode = self._zapprops['2002']
@@ -504,6 +510,8 @@ class TivoDevice(MediaPlayerDevice):
 
         param = '?time=' + str(now) + '&timespan=1&pref=-&' + urlencode(zap_params) + '&TMSID=&FromPage=TV%20Grid&ActivityID=1&OVDID=&isOverride=true'
         url = host + 'api/grid' + param
+        if self.debug:
+            _LOGGER.warning("Zapget url: %s", url)
 
         header = {'X-Requested-With': 'XMLHttpRequest'}
 
