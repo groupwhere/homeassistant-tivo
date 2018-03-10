@@ -65,5 +65,12 @@ Goals:
 The protocol should be capable of the above but it is unclear to me how to connect that to hass.
 ```
 
+Issues:
+
+```
+1. Socket timeout occurs when connecting to a Tivo which is currently playing a recording, etc. (i.e. not in LiveTV mode)
+    This should be captured now but requires further testing...
+```
+
 More to come...
 
