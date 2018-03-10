@@ -37,6 +37,7 @@ DEFAULT_DEVICE = '0'
 
 CONF_ZAPUSER = 'zapuser'
 CONF_ZAPPASS = 'zappass'
+CONF_DEBUG   = 'debug'
 
 MIN_TIME_BETWEEN_SCANS = timedelta(seconds=10)
 MIN_TIME_BETWEEN_FORCED_SCANS = timedelta(seconds=1)
@@ -56,7 +57,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.port,
     vol.Optional(CONF_DEVICE, default=DEFAULT_DEVICE): cv.string,
     vol.Optional(CONF_ZAPUSER, default=""): cv.string,
-    vol.Optional(CONF_ZAPPASS, default=""): cv.string
+    vol.Optional(CONF_ZAPPASS, default=""): cv.string,
+    vol.Optional(CONF_DEBUG, default=""): cv.string
 })
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
@@ -73,7 +75,8 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
             config.get(CONF_PORT),
             config.get(CONF_DEVICE),
             config.get(CONF_ZAPUSER),
-            config.get(CONF_ZAPPASS)
+            config.get(CONF_ZAPPASS),
+            config.get(CONF_DEBUG)
         ])
 
     # Discovery not tested and likely not working
@@ -112,13 +115,15 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     @util.Throttle(MIN_TIME_BETWEEN_SCANS, MIN_TIME_BETWEEN_FORCED_SCANS)
     def update_status():
         for tivo in tivos:
-            _LOGGER.warning("device: %s", tivo)
+            if tivo.debug:
+                _LOGGER.warning("device: %s", tivo)
             tivo.get_status()
 
     @util.Throttle(MIN_TIME_BETWEEN_ZAPUPDATE, MIN_TIME_BETWEEN_FORCED_ZAPUPDATE)
     def zap2it_update():
         for tivo in tivos:
-            _LOGGER.warning("device: %s", tivo)
+            if self.debug:
+                _LOGGER.warning("device: %s", tivo)
             tivo.zap_update()
 
     return True
@@ -126,7 +131,7 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
 class TivoDevice(MediaPlayerDevice):
     """Representation of a Tivo receiver on the network."""
 
-    def __init__(self, name, host, port, device, zapuser, zappass):
+    def __init__(self, name, host, port, device, zapuser, zappass, debug):
         """Initialize the device."""
         self._name = name
         self._host = host
@@ -143,6 +148,8 @@ class TivoDevice(MediaPlayerDevice):
         self._ignore = {}
         self.sock = None
 
+        self.debug = debug
+
         if zapuser and zappass:
             self.usezap = True
             self.zapget_data()
@@ -151,7 +158,8 @@ class TivoDevice(MediaPlayerDevice):
 
     def connect(self, host, port):
         try:
-            _LOGGER.warning("Connecting to Tivo...")
+            if self.debug:
+                _LOGGER.warning("Connecting to Tivo...")
             self.sock = socket.socket()
             self.sock.settimeout(5)
             self.sock.connect((host, port))
@@ -159,11 +167,13 @@ class TivoDevice(MediaPlayerDevice):
             raise
 
     def disconnect(self):
-        _LOGGER.warning("Disconnecting from Tivo...")
+        if self.debug:
+            _LOGGER.warning("Disconnecting from Tivo...")
         self.sock.close()
 
     def get_status(self):
-        _LOGGER.warning("Tivo get_status called...")
+        if self.debug:
+            _LOGGER.warning("Tivo get_status called...")
         data = self.send_code('','')
         """ e.g. CH_STATUS 0645 LOCAL """
 
@@ -184,8 +194,9 @@ class TivoDevice(MediaPlayerDevice):
                     ch  = str(self._channels.get(words[1]))
                     num = str(words[1])
                     ti  = str(self._titles.get(words[1]))
-                    _LOGGER.warning("Channel: %s", ch)
-                    _LOGGER.warning("Title:   %s", ti)
+                    if self.debug:
+                        _LOGGER.warning("Channel: %s", ch)
+                        _LOGGER.warning("Title:   %s", ti)
 
                     self._current["title"] = "Ch. " + num + " " + ch + ": " + ti
 
@@ -194,7 +205,8 @@ class TivoDevice(MediaPlayerDevice):
                 self._current["title"]   = "no title"
                 self._current["status"]  = "no status"
                 self._current["mode"]    = "none"
-                _LOGGER.warning("Tivo did not respond correctly...")
+                if self.debug:
+                    _LOGGER.warning("Tivo did not respond correctly...")
 
     def send_code(self, code, cmdtype="IRCODE", extra=0, bufsize=1024):
         data = ""
@@ -209,15 +221,18 @@ class TivoDevice(MediaPlayerDevice):
             else:
                 tosend = ""
 
-            _LOGGER.warning("Sending request: '%s'", tosend)
+            if self.debug:
+                _LOGGER.warning("Sending request: '%s'", tosend)
 
             try:
                 self.sock.sendall(tosend.encode())
                 data = self.sock.recv(bufsize)
                 time.sleep(0.1)
-                _LOGGER.warning("Received response: '%s'", data)
+                if self.debug:
+                    _LOGGER.warning("Received response: '%s'", data)
             except socket.timeout:
-                _LOGGER.warning("Connection timed out...")
+                if self.debug:
+                    _LOGGER.warning("Connection timed out...")
                 data = b'no_channel Video'
 
             self.disconnect()
@@ -479,7 +494,8 @@ class TivoDevice(MediaPlayerDevice):
         (self._lineupId, self._device) = self._zapprops['2004'].split(':')
 
     def zapget_data(self):
-        _LOGGER.warning("zapget_data called")
+        if self.debug:
+            _LOGGER.warning("zapget_data called")
         self.zaplogin()
         now = int(time.time())
         self._channels = {}
@@ -502,16 +518,18 @@ class TivoDevice(MediaPlayerDevice):
         self.zapget_titles()
 
     def zapget_channels(self):
-        _LOGGER.warning("zapget_channels called")
+        # Decode basic channel num to channel name from zap raw data
+        if self.debug:
+            _LOGGER.warning("zapget_channels called")
         for channelData in self._zapraw['channels']:
             # Pad channel numbers to 4 chars to match values from Tivo device
             _ch = channelData['channelNo'].zfill(4)
             self._channels[_ch] = channelData['callSign']
 
-
     def zapget_titles(self):
         # Decode program titles from zap raw data
-        _LOGGER.warning("zapget_titles called")
+        if self.debug:
+            _LOGGER.warning("zapget_titles called")
         self._titles = {}
 
         for channelData in self._zapraw['channels']:
