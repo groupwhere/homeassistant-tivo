@@ -33,11 +33,12 @@ media_player:
     name: Tivo
     port: 31339
     device: 0
+    debug: 0
 #    zapuser: your_zaptoit_email_login
 #    zappass: !secret zap2it_pass
 ```
-
-Do not add zapuser/zappass to configuration.yaml unless you have a valid Zap2iT account.
+1. Set debug to 1 for additional logging
+2. Do not add zapuser/zappass to configuration.yaml unless you have a valid Zap2iT account.
 Add your zap2it password into secrets.yaml - note that our example does not encode the password, which you can change:
 ```
 zap2it_pass: whateverYouChose
