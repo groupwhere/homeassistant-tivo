@@ -145,6 +145,7 @@ class TivoDevice(MediaPlayerDevice):
         self._ignore = {}
         self.sock = None
 
+        debug = bool(int(debug))
         self.debug = debug
 
         if zapuser and zappass:
