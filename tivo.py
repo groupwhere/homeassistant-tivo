@@ -7,12 +7,14 @@ https://home-assistant.io/components/media_player.tivo/
 import voluptuous as vol
 import requests
 import re
+import asyncio
 
 from datetime import timedelta
 import logging
 import socket
 import sys
 import time
+from calendar import timegm
 import json
 import urllib
 from urllib.parse import urlencode
@@ -26,7 +28,7 @@ from homeassistant.components.media_player import (
 from homeassistant.const import (
     CONF_DEVICE, CONF_HOST, CONF_NAME, STATE_OFF, STATE_PLAYING, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)
 import homeassistant.helpers.config_validation as cv
-from homeassistant.helpers.event import track_utc_time_change
+from homeassistant.helpers.event import track_time_interval
 from homeassistant.util.json import load_json, save_json
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,10 +41,8 @@ CONF_ZAPUSER = 'zapuser'
 CONF_ZAPPASS = 'zappass'
 CONF_DEBUG   = 'debug'
 
-MIN_TIME_BETWEEN_SCANS = timedelta(seconds=10)
-MIN_TIME_BETWEEN_FORCED_SCANS = timedelta(seconds=1)
-MIN_TIME_BETWEEN_ZAPUPDATE = timedelta(seconds=3600)
-MIN_TIME_BETWEEN_FORCED_ZAPUPDATE = timedelta(seconds=1800)
+SCAN_INTERVAL = timedelta(seconds=10)
+ZAP_SCAN_INTERVAL = timedelta(seconds=900)
 
 SUPPORT_TIVO = SUPPORT_PAUSE |\
     SUPPORT_PLAY_MEDIA | SUPPORT_STOP | SUPPORT_NEXT_TRACK |\
@@ -109,22 +109,19 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     add_devices(tivos)
     hass.data[DATA_TIVO] = known_devices
 
-    track_utc_time_change(hass, lambda now: update_status(), second=30)
-    track_utc_time_change(hass, lambda now: zap2it_update(), second=3600)
-
-    @util.Throttle(MIN_TIME_BETWEEN_SCANS, MIN_TIME_BETWEEN_FORCED_SCANS)
-    def update_status():
+    def update_status(event_time):
         for tivo in tivos:
             if tivo.debug:
-                _LOGGER.warning("device: %s", tivo)
+                _LOGGER.warning("update_status: %s", tivo)
             tivo.get_status()
 
-    @util.Throttle(MIN_TIME_BETWEEN_ZAPUPDATE, MIN_TIME_BETWEEN_FORCED_ZAPUPDATE)
-    def zap2it_update():
+    def zap2it_update(event_time):
         for tivo in tivos:
-            if self.debug:
-                _LOGGER.warning("device: %s", tivo)
+            _LOGGER.warning("zap2it_update: %s at %s", tivo, str(event_time))
             tivo.zap_update()
+
+    track_time_interval(hass, update_status, SCAN_INTERVAL)
+    track_time_interval(hass, zap2it_update, ZAP_SCAN_INTERVAL)
 
     return True
 
@@ -159,7 +156,7 @@ class TivoDevice(MediaPlayerDevice):
     def connect(self, host, port):
         try:
             if self.debug:
-                _LOGGER.warning("Connecting to Tivo...")
+                _LOGGER.warning("Connecting to device...")
             self.sock = socket.socket()
             self.sock.settimeout(5)
             self.sock.connect((host, port))
@@ -168,14 +165,15 @@ class TivoDevice(MediaPlayerDevice):
 
     def disconnect(self):
         if self.debug:
-            _LOGGER.warning("Disconnecting from Tivo...")
+            _LOGGER.warning("Disconnecting from device...")
         self.sock.close()
 
     def get_status(self):
         if self.debug:
-            _LOGGER.warning("Tivo get_status called...")
+            _LOGGER.warning("get_status called...")
         data = self.send_code('','')
         """ e.g. CH_STATUS 0645 LOCAL """
+        """ e.g. CH_STATUS 0645 RECORDING """
 
         words = data.split()
         self.set_status(words)
@@ -195,8 +193,9 @@ class TivoDevice(MediaPlayerDevice):
                     num = str(words[1])
                     ti  = str(self._titles.get(words[1]))
                     if self.debug:
-                        _LOGGER.warning("Channel: %s", ch)
-                        _LOGGER.warning("Title:   %s", ti)
+                        _LOGGER.warning("Channel:  %s", num)
+                        _LOGGER.warning("Callsign: %s", ch)
+                        _LOGGER.warning("Title:    %s", ti)
 
                     self._current["title"] = "Ch. " + num + " " + ch + ": " + ti
 
@@ -206,7 +205,7 @@ class TivoDevice(MediaPlayerDevice):
                 self._current["status"]  = "no status"
                 self._current["mode"]    = "none"
                 if self.debug:
-                    _LOGGER.warning("Tivo did not respond correctly...")
+                    _LOGGER.warning("device did not respond correctly...")
 
     def send_code(self, code, cmdtype="IRCODE", extra=0, bufsize=1024):
         data = ""
@@ -226,8 +225,8 @@ class TivoDevice(MediaPlayerDevice):
 
             try:
                 self.sock.sendall(tosend.encode())
+                time.sleep(0.3)
                 data = self.sock.recv(bufsize)
-                time.sleep(0.1)
                 if self.debug:
                     _LOGGER.warning("Received response: '%s'", data)
             except socket.timeout:
@@ -421,8 +420,6 @@ class TivoDevice(MediaPlayerDevice):
             return None
 
         self.send_code('PAUSE', 'IRCODE', 0, 0)
-#        words = data.split()
-#        return words[2]
 
     @property
     def media_stop(self):
@@ -508,6 +505,7 @@ class TivoDevice(MediaPlayerDevice):
         zap_params = self.get_zap_params()
         host = 'https://tvlistings.zap2it.com/'
 
+        # Only get 1 hour of programming since we only need/want the current program titles
         param = '?time=' + str(now) + '&timespan=1&pref=-&' + urlencode(zap_params) + '&TMSID=&FromPage=TV%20Grid&ActivityID=1&OVDID=&isOverride=true'
         url = host + 'api/grid' + param
         if self.debug:
@@ -518,9 +516,15 @@ class TivoDevice(MediaPlayerDevice):
         req = urllib.request.Request(url=url,headers=header, method='GET')
         res = urllib.request.urlopen(req, timeout=5)
 
-        #self._raw = res.read().decode('utf8')
-        #self._zapraw = json.loads(self._raw)
-        self._zapraw = json.loads(res.read().decode('utf8'))
+        if self.debug:
+            self._raw = res.read().decode('utf8')
+            self._zapraw = json.loads(self._raw)
+
+            f = open('/tmp/zapraw','w')
+            f.write(self._raw)
+            f.close()
+        else:
+            self._zapraw = json.loads(res.read().decode('utf8'))
 
         self.zapget_channels()
         self.zapget_titles()
@@ -543,13 +547,20 @@ class TivoDevice(MediaPlayerDevice):
         for channelData in self._zapraw['channels']:
             _ch = channelData['channelNo'].zfill(4)
             _ev = channelData['events']
+
             tmp = _ev[0]
             prog = tmp['program']
-            title = prog['title']
 
-            self._titles[_ch] = title
+            start_utc  = time.strptime(tmp['startTime'], "%Y-%m-%dT%H:%M:%SZ")
+            start_time = timegm(start_utc)
 
-        #_LOGGER.warning("Titles: %s", self._titles)
+            end_utc    = time.strptime(tmp['endTime'], "%Y-%m-%dT%H:%M:%SZ")
+            end_time   = timegm(end_utc)
+
+            now = int(time.time())
+            if start_time < now < end_time:
+                title = prog['title']
+                self._titles[_ch] = title
 
     def get_zap_params(self):
         zparams = {}
