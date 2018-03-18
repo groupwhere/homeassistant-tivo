@@ -10,6 +10,7 @@ import re
 import asyncio
 
 from datetime import timedelta
+#from pytz import timezone
 import logging
 import socket
 import sys
@@ -28,6 +29,7 @@ from homeassistant.components.media_player import (
 from homeassistant.const import (
     CONF_DEVICE, CONF_HOST, CONF_NAME, STATE_OFF, STATE_PLAYING, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)
 import homeassistant.helpers.config_validation as cv
+#from homeassistant.helpers.event import (track_utc_time_change, track_time_interval)
 from homeassistant.helpers.event import track_time_interval
 from homeassistant.util.json import load_json, save_json
 
@@ -42,7 +44,7 @@ CONF_ZAPPASS = 'zappass'
 CONF_DEBUG   = 'debug'
 
 SCAN_INTERVAL = timedelta(seconds=10)
-ZAP_SCAN_INTERVAL = timedelta(seconds=900)
+ZAP_SCAN_INTERVAL = timedelta(seconds=300)
 
 SUPPORT_TIVO = SUPPORT_PAUSE |\
     SUPPORT_PLAY_MEDIA | SUPPORT_STOP | SUPPORT_NEXT_TRACK |\
@@ -58,7 +60,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_DEVICE, default=DEFAULT_DEVICE): cv.string,
     vol.Optional(CONF_ZAPUSER, default=""): cv.string,
     vol.Optional(CONF_ZAPPASS, default=""): cv.string,
-    vol.Optional(CONF_DEBUG, default=""): cv.string
+    vol.Optional(CONF_DEBUG, default=0): cv.string
 })
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
@@ -212,12 +214,15 @@ class TivoDevice(MediaPlayerDevice):
         data = ""
         if extra:
             code = code + " " + extra
-            # can be IRCODE, KEYBOARD, or TELEPORT.  Usually it's IRCODE but we might switch to KEYBOARD since it can do more.
+            # can be '', IRCODE, KEYBOARD, or TELEPORT.  Usually it's IRCODE but we might switch to KEYBOARD since it can do more.
 
         try:
             self.connect(self._host, self._port)
             if code:
-                tosend = cmdtype + " " + code + "\r"
+                if cmdtype == '':
+                    tosend = code + "\r"
+                else:
+                    tosend = cmdtype + " " + code + "\r"
             else:
                 tosend = ""
 
@@ -299,8 +304,8 @@ class TivoDevice(MediaPlayerDevice):
     def channel_set(self, channel):
         """Channel set."""
         data = self.show_live()
-        if(data == "LIVETV READY"):
-            self.send_code('SETCH', 'IRCODE', channel)
+        #if(data.trim() == "LIVETV_READY"):
+        self.send_code('SETCH', '', channel)
 
     def media_ch_up(self):
         """Channel up."""
@@ -498,8 +503,8 @@ class TivoDevice(MediaPlayerDevice):
         (self._lineupId, self._device) = self._zapprops['2004'].split(':')
 
     def zapget_data(self):
-        if self.debug:
-            _LOGGER.warning("zapget_data called")
+        #if self.debug:
+        _LOGGER.warning("zapget_data called")
         self.zaplogin()
         now = int(time.time())
         self._channels = {}
@@ -507,6 +512,7 @@ class TivoDevice(MediaPlayerDevice):
         host = 'https://tvlistings.zap2it.com/'
 
         # Only get 1 hour of programming since we only need/want the current program titles
+        #param = '?time=' + str(now) + '&timespan=0&pref=-&' + urlencode(zap_params) + '&TMSID=&FromPage=TV%20Grid&ActivityID=1&OVDID=&isOverride=true'
         param = '?time=' + str(now) + '&timespan=1&pref=-&' + urlencode(zap_params) + '&TMSID=&FromPage=TV%20Grid&ActivityID=1&OVDID=&isOverride=true'
         url = host + 'api/grid' + param
         if self.debug:
@@ -516,6 +522,10 @@ class TivoDevice(MediaPlayerDevice):
 
         req = urllib.request.Request(url=url,headers=header, method='GET')
         res = urllib.request.urlopen(req, timeout=5)
+
+        #self._raw = res.read().decode('utf8')
+        #self._zapraw = json.loads(self._raw)
+        #self._zapraw = json.loads(res.read().decode('utf8'))
 
         if self.debug:
             self._raw = res.read().decode('utf8')
@@ -544,6 +554,8 @@ class TivoDevice(MediaPlayerDevice):
         if self.debug:
             _LOGGER.warning("zapget_titles called")
         self._titles = {}
+        #self._start  = {}
+        #self._end    = {}
 
         for channelData in self._zapraw['channels']:
             _ch = channelData['channelNo'].zfill(4)
@@ -554,14 +566,20 @@ class TivoDevice(MediaPlayerDevice):
 
             start_utc  = time.strptime(tmp['startTime'], "%Y-%m-%dT%H:%M:%SZ")
             start_time = timegm(start_utc)
+#            starthm    = time.strftime("%H:%M",  timezone('US/Central').localize(start_utc))
 
             end_utc    = time.strptime(tmp['endTime'], "%Y-%m-%dT%H:%M:%SZ")
             end_time   = timegm(end_utc)
+#            #endhm   = time.strftime("%H:%M", end_utc)
+#            endhm   = time.strftime("%H:%M", timezone('US/Central').localize(end_utc))
+#
+#            pgmtime = ' (' + starthm + ' - ' + endhm + ')'
 
             now = int(time.time())
             if start_time < now < end_time:
                 title = prog['title']
                 self._titles[_ch] = title
+                # + pgmtime
 
     def get_zap_params(self):
         zparams = {}
