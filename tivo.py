@@ -194,6 +194,7 @@ class TivoDevice(MediaPlayerDevice):
                 if self.usezap:
                     ch  = str(self._channels.get(words[1]))
                     num = str(words[1])
+                    num = num.lstrip("0")
                     ti  = str(self._titles.get(words[1]))
                     if self.debug:
                         _LOGGER.warning("Channel:  %s", num)
@@ -299,6 +300,14 @@ class TivoDevice(MediaPlayerDevice):
         """Now playing."""
         data = self.send_code('NOWPLAYING', 'TELEPORT')
         self._current["mode"] = "NOWPLAYING"
+        return data.decode()
+
+    @property
+    def show_vod(self):
+        data = b""
+        """ Activate Video on demand menu """
+        data = self.send_code('VIDEO_ON_DEMAND','KEYBOARD')
+        self._current["mode"] = "VIDEO"
         return data.decode()
 
     def channel_set(self, channel):
