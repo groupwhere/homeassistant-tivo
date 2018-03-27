@@ -71,8 +71,6 @@ Issues:
 ```
 1. Socket timeout occurs when connecting to a Tivo which is currently playing a recording,
     etc. (i.e. not in LiveTV mode)  This should be captured now but requires further testing...
-2. Scheduling of regular zap updates not quite working.  Running during the regular cycle
-    would be a waste of remote calls, so more work needs to be done here.
 ```
 
 More to come...
