@@ -119,8 +119,10 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
 
     def zap2it_update(event_time):
         for tivo in tivos:
-            _LOGGER.warning("zap2it_update: %s at %s", tivo, str(event_time))
-            tivo.zap_update()
+            if tivo.usezap:
+                if tivo.debug:
+                    _LOGGER.warning("zap2it_update: %s at %s", tivo, str(event_time))
+                tivo.zap_update()
 
     track_time_interval(hass, update_status, SCAN_INTERVAL)
     track_time_interval(hass, zap2it_update, ZAP_SCAN_INTERVAL)
