@@ -144,6 +144,7 @@ class TivoDevice(MediaPlayerDevice):
 
         self._channels = {}
         self._titles = {}
+        self._images = {}
         self._is_standby = False
         self._current = {}
         self._ignore = {}
@@ -192,6 +193,8 @@ class TivoDevice(MediaPlayerDevice):
                     self._current["title"]   = "Ch. " + words[1]
                     self._current["status"]  = words[2]
                     self._current["mode"]    = "TV"
+                    # returns no image
+                    self._current["image"] = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
 
                 if self.usezap:
                     ch  = str(self._channels.get(words[1]))
@@ -204,12 +207,15 @@ class TivoDevice(MediaPlayerDevice):
                         _LOGGER.warning("Title:    %s", ti)
 
                     self._current["title"] = "Ch. " + num + " " + ch + ": " + ti
+                    self._current["image"] = self._images.get(words[1])
 
             except IndexError:
                 self._current["channel"] = "no channel"
                 self._current["title"]   = "no title"
                 self._current["status"]  = "no status"
                 self._current["mode"]    = "none"
+                # returns no image
+                self._current["image"] = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
                 if self.debug:
                     _LOGGER.warning("device did not respond correctly...")
 
@@ -341,7 +347,6 @@ class TivoDevice(MediaPlayerDevice):
         """Return the content ID of current playing media."""
         if self._is_standby:
             return None
-
         return self._current["status"]
 
     @property
@@ -358,6 +363,13 @@ class TivoDevice(MediaPlayerDevice):
         if self._is_standby:
             return None
         return self._current['title']
+
+    @property
+    def media_image_url(self):
+        """Return the image url of current playing media."""
+        if self._is_standby:
+            return None
+        return self._current['image']
 
     @property
     def media_series_title(self):
@@ -565,6 +577,7 @@ class TivoDevice(MediaPlayerDevice):
         if self.debug:
             _LOGGER.warning("zapget_titles called")
         self._titles = {}
+        self._images = {}
         #self._start  = {}
         #self._end    = {}
 
@@ -586,10 +599,27 @@ class TivoDevice(MediaPlayerDevice):
 #
 #            pgmtime = ' (' + starthm + ' - ' + endhm + ')'
 
+            try:
+                if tmp['thumbnail'] != "":
+                    image = "https://zap2it.tmsimg.com/assets/" + tmp['thumbnail'] + ".jpg"
+                else:
+                    image = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
+            except:
+                image = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
+            self._images[_ch] = image
+
             now = int(time.time())
             if start_time < now < end_time:
                 title = prog['title']
                 self._titles[_ch] = title
+                try:
+                    if tmp['thumbnail'] != "":
+                        image = "https://zap2it.tmsimg.com/assets/" + tmp['thumbnail'] + ".jpg"
+                    else:
+                        image = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
+                except:
+                    image = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
+                self._images[_ch] = image
                 # + pgmtime
 
     def get_zap_params(self):
