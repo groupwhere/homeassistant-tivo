@@ -16,7 +16,7 @@ Working functions:
 2. Power buttons
 3. FWD and REV
 4. PLAY and PAUSE
-5. Retrieval of program title info using zap2it - must use your own account information
+5. Retrieval of program title and image info using zap2it - must use your own account information
 ```
 
 Available but not integrated into gui, etc:
