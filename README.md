@@ -24,7 +24,12 @@ Available but not integrated into gui, etc:
 1. Open guide, tivo menu, live tv, now playing
 ```
 
-Copy tivo.py to your CONFIG_DIR/custom_components/media_player directory.  It requires the following configuration:
+Copy the tivo folder to your CONFIG_DIR/custom_components/ directory.  This should now look like:
+```
+CONFIG_DIR/custom_components/tivo/media_player.py
+```
+
+It requires the following configuration:
 
 ```
 media_player:
