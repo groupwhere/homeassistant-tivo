@@ -1,5 +1,5 @@
 # homeassistant-tivo
-Tivo component for Home Assistant
+Tivo component for Home Assistant (This branch is for pre-0.88.X)
 
 Based on ideas from the following sites:
 
