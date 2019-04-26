@@ -1,0 +1,9 @@
+{
+	"domain": "tivo",
+	"name": "Tivo",
+	"documentation": "https://github.com/groupwhere/homeassistant-tivo/blob/0.88.1/README.md",
+	"dependencies": [],
+	"codeowners": [],
+	"requirements": []
+}
+
