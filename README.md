@@ -1,5 +1,5 @@
 # homeassistant-tivo
-Tivo component for Home Assistant (updated for Homeassistant 0.88.X)
+Tivo component for Home Assistant (updated for Homeassistant 0.92.X)
 
 Based on ideas from the following sites:
 
