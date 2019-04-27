@@ -1,9 +1,7 @@
 # homeassistant-tivo
-<<<<<<< HEAD
 Tivo component for Home Assistant (updated for Homeassistant 0.92.X)
 =======
 Tivo component for Home Assistant (This branch is for pre-0.88.X)
->>>>>>> 63154bfbfc59ab014da556c2f7e486b85f731280
 
 Based on ideas from the following sites:
 
