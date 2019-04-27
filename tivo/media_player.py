@@ -22,9 +22,8 @@ from urllib.parse import urlencode
 import os.path
 
 from homeassistant import util
-#from homeassistant.components.media_player import (
 from homeassistant.components.media_player import (
-    MediaPlayerDevice, PLATFORM_SCHEMA)
+        PLATFORM_SCHEMA, MediaPlayerDevice)
 from homeassistant.components.media_player.const import (
     MEDIA_TYPE_TVSHOW, MEDIA_TYPE_VIDEO, SUPPORT_PAUSE, SUPPORT_PLAY_MEDIA,
     SUPPORT_TURN_OFF, SUPPORT_TURN_ON, SUPPORT_STOP,
