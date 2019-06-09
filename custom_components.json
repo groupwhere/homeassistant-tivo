@@ -1,0 +1,13 @@
+{
+    "tivo": {
+        "version": "0.0.2",
+        "local_location": "/custom_components/tivo/__init__.py",
+        "remote_location": "https://raw.githubusercontent.com/jcollas/homeassistant_tivo/master/tivo/__init__.py",
+        "visit_repo": "https://github.com/jcollas/homeassistant_tivo",
+        "changelog": "https://github.com/jcollas/homeassistant_tivo/wiki/Changelog",
+        "resources": [
+            "https://raw.githubusercontent.com/jcollas/homeassistant_tivo/master/tivo/media_player.py",
+            "https://raw.githubusercontent.com/jcollas/homeassistant_tivo/master/tivo/manifest.json"
+        ]
+    }
+}
