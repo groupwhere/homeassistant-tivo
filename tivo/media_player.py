@@ -8,6 +8,7 @@ import voluptuous as vol
 import requests
 import re
 import asyncio
+import zeroconf
 
 from datetime import timedelta
 #from pytz import timezone
@@ -29,7 +30,7 @@ from homeassistant.components.media_player.const import (
     SUPPORT_TURN_OFF, SUPPORT_TURN_ON, SUPPORT_STOP,
     SUPPORT_NEXT_TRACK, SUPPORT_PREVIOUS_TRACK, SUPPORT_PLAY)
 from homeassistant.const import (
-    CONF_DEVICE, CONF_HOST, CONF_NAME, STATE_OFF, STATE_PLAYING, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)
+    CONF_DEVICE, CONF_HOST, CONF_NAME, STATE_OFF, STATE_STANDBY, STATE_PLAYING, CONF_PORT, CONF_USERNAME, CONF_PASSWORD)
 import homeassistant.helpers.config_validation as cv
 #from homeassistant.helpers.event import (track_utc_time_change, track_time_interval)
 from homeassistant.helpers.event import track_time_interval
@@ -56,7 +57,7 @@ SUPPORT_TIVO = SUPPORT_PAUSE |\
 DATA_TIVO = "data_tivo"
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_HOST): cv.string,
+    vol.Optional(CONF_HOST): cv.string,
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
     vol.Optional(CONF_PORT, default=DEFAULT_PORT): cv.port,
     vol.Optional(CONF_DEVICE, default=DEFAULT_DEVICE): cv.string,
@@ -72,37 +73,35 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
         known_devices = []
     hosts = []
 
+    zapuser = config.get(CONF_ZAPUSER)
+    zappass = config.get(CONF_ZAPPASS)
+    debug = config.get(CONF_DEBUG)
+
     if CONF_HOST in config:
         hosts.append([
             config.get(CONF_NAME),
             config.get(CONF_HOST),
             config.get(CONF_PORT),
             config.get(CONF_DEVICE),
-            config.get(CONF_ZAPUSER),
-            config.get(CONF_ZAPPASS),
-            config.get(CONF_DEBUG)
+            zapuser,
+            zappass,
+            debug
         ])
 
     # Discovery not tested and likely not working
-    elif discovery_info:
-        host = discovery_info.get('host')
-        name = 'Tivo_' + discovery_info.get('serial', '')
+    else:
+        zc_hosts = find_tivos_zc()
 
-        # attempt to discover additional Tivo units
-        try:
-            resp = requests.get(
-                'http://%s:%d/info/getLocations' % (host, DEFAULT_PORT)).json()
-            if "locations" in resp:
-                for loc in resp["locations"]:
-                    if("locationName" in loc and "clientAddr" in loc
-                       and loc["clientAddr"] not in known_devices):
-                        hosts.append([str.title(loc["locationName"]), host,
-                                      DEFAULT_PORT, loc["clientAddr"]])
-
-        except requests.exceptions.RequestException:
+        if len(zc_hosts) != 0:
+            # attempt to discover additional Tivo units
+            device = 0
+            for name, ip_addr in zc_hosts.items():
+                hosts.append([name + " TiVo", ip_addr, DEFAULT_PORT, device, zapuser, zappass, debug])
+                device = device + 1
+        else:
             # bail out and just go forward with uPnP data
             if DEFAULT_DEVICE not in known_devices:
-                hosts.append([name, host, DEFAULT_PORT, DEFAULT_DEVICE])
+                hosts.append([name, host, DEFAULT_PORT, DEFAULT_DEVICE, zapuser, zappass, debug])
 
     tivos = []
 
@@ -130,6 +129,81 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     track_time_interval(hass, zap2it_update, ZAP_SCAN_INTERVAL)
 
     return True
+
+#
+# Taken from https://github.com/wmcbrine/tivoremote.git
+#
+def find_tivos_zc():
+    """ Find TiVos on the LAN using Zeroconf. This is simpler and
+        cleaner than the fake HTTP method, but slightly slower, and
+        requires the Zeroconf module. (It's still much faster than
+        waiting for beacons.)
+
+    """
+
+    class ZCListener:
+        def __init__(self, names):
+            self.names = names
+
+        def remove_service(self, server, type, name):
+            self.names.remove(name)
+
+        def add_service(self, server, type, name):
+            self.names.append(name)
+
+    REMOTE = '_tivo-remote._tcp.local.'
+
+    tivo_ports = {}
+    tivo_swversions = {}
+
+    tivos = {}
+    tivos_rev = {}
+    tivo_names = []
+
+    # Get the names of TiVos offering network remote control
+    try:
+        serv = zeroconf.Zeroconf()
+        browser = zeroconf.ServiceBrowser(serv, REMOTE, ZCListener(tivo_names))
+    except:
+        return tivos
+
+    # Give them a second to respond
+    time.sleep(1)
+
+    # For proxied TiVos, remove the original
+    for t in tivo_names[:]:
+        if t.startswith('Proxy('):
+            try:
+                t = t.replace('.' + REMOTE, '')[6:-1] + '.' + REMOTE
+                tivo_names.remove(t)
+            except:
+                pass
+
+    # Now get the addresses -- this is the slow part
+    swversion = re.compile('(\d*.\d*)').findall
+    for t in tivo_names:
+        s = serv.get_service_info(REMOTE, t)
+        if s:
+            name = t.replace('.' + REMOTE, '')
+            address = socket.inet_ntoa(s.address)
+            try:
+                version = float(swversion(s.getProperties()['swversion'])[0])
+            except:
+                version = 0.0
+            tivos[name] = address
+            tivos_rev[address] = name
+            tivo_ports[name] = s.port
+            tivo_swversions[name] = version
+
+    # For proxies with numeric names, remove the original
+    for t in tivo_names:
+        if t.startswith('Proxy('):
+            address = t.replace('.' + REMOTE, '')[6:-1]
+            if address in tivos_rev:
+                tivos.pop(tivos_rev[address])
+
+    serv.close()
+    return tivos
 
 class TivoDevice(MediaPlayerDevice):
     """Representation of a Tivo receiver on the network."""
@@ -187,8 +261,16 @@ class TivoDevice(MediaPlayerDevice):
         self.set_status(words)
 
     def set_status(self, words):
+#        _LOGGER.warning(words)
+
+        self._is_standby = True
+
         if words:
             try:
+                # Sometimes tivo returns 'no_channel Video' from a status request.
+                if words[0] == 'no_channel':
+                    return
+
                 if words[0] == "CH_STATUS":
                     #_LOGGER.warning("Got channel status")
                     self._current["channel"] = words[1]
@@ -200,6 +282,7 @@ class TivoDevice(MediaPlayerDevice):
 
                 if self.usezap:
                     ch  = str(self._channels.get(words[1]))
+                    self._current["channel"] = ch
                     num = str(words[1])
                     num = num.lstrip("0")
                     ti  = str(self._titles.get(words[1]))
@@ -210,6 +293,10 @@ class TivoDevice(MediaPlayerDevice):
 
                     self._current["title"] = "Ch. " + num + " " + ch + ": " + ti
                     self._current["image"] = self._images.get(words[1])
+                    self._current["status"]  = "no status"
+                    self._current["mode"]    = "TV"
+
+                self._is_standby = False
 
             except IndexError:
                 self._current["channel"] = "no channel"
@@ -220,6 +307,9 @@ class TivoDevice(MediaPlayerDevice):
                 self._current["image"] = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
                 if self.debug:
                     _LOGGER.warning("device did not respond correctly...")
+        else:
+            if self.debug:
+                _LOGGER.warning("device did not respond correctly...")
 
     def send_code(self, code, cmdtype="IRCODE", extra=0, bufsize=1024):
         data = ""
@@ -273,7 +363,7 @@ class TivoDevice(MediaPlayerDevice):
     def state(self):
         """Return the state of the device."""
         if self._is_standby:
-            return STATE_OFF
+            return STATE_STANDBY
         # Haven't determined a way to see if the content is paused
         return STATE_PLAYING
 
