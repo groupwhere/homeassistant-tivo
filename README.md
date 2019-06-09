@@ -45,10 +45,21 @@ media_player:
 1. Set debug to 1 for additional logging
 2. Do not add zapuser/zappass to configuration.yaml unless you have a valid Zap2iT account.
 Add your zap2it password into secrets.yaml - note that our example does not encode the password, which you can change:
+
 ```
 zap2it_pass: whateverYouChose
 ```
 
+You can also let the tivo component use zeroconf configuration to find and construct your TiVo entities.  Just remove the `host` key.  In this case, the configuration would look like:
+
+```
+media_player:
+  - platform: tivo
+#    zapuser: your_zaptoit_email_login
+#    zappass: !secret zap2it_pass
+```
+
+The entity names will be the name of the TiVo unit with the string `_tivo` added to the end.  You can customize the entity names in the `customization.yaml` file.  If you need to change the TiVo port for a specific unit, you can't use the zeroconf configuration.
 
 This works by opening a socket connection to the Tivo device on its default port 31339.  Then using the following protocol, it can perform several commands:
 
