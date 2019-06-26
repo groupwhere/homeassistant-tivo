@@ -273,26 +273,34 @@ class TivoDevice(MediaPlayerDevice):
 
                 if words[0] == "CH_STATUS":
                     #_LOGGER.warning("Got channel status")
-                    self._current["channel"] = words[1]
-                    self._current["title"]   = "Ch. " + words[1]
-                    self._current["status"]  = words[2]
+                    # subchannel?
+                    if len(words) == 4:
+                        channel = words[1].lstrip("0") + "." + words[2].lstrip("0")
+                        status = words[3]
+                    else:
+                        channel = words[1].lstrip("0")
+                        status = words[2]
+                    self._current["channel"] = channel
+                    self._current["title"]   = "Ch. " + channel
+                    self._current["status"]  = status
                     self._current["mode"]    = "TV"
                     # returns no image
                     self._current["image"] = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
 
                 if self.usezap:
-                    ch  = str(self._channels.get(words[1]))
+                    zap_ch = channel.replace('-', '.')
+                    ch  = str(self._channels.get(zap_ch))
                     self._current["channel"] = ch
-                    num = str(words[1])
+                    num = str(zap_ch)
                     num = num.lstrip("0")
-                    ti  = str(self._titles.get(words[1]))
+                    ti  = str(self._titles.get(zap_ch))
                     if self.debug:
                         _LOGGER.warning("Channel:  %s", num)
                         _LOGGER.warning("Callsign: %s", ch)
                         _LOGGER.warning("Title:    %s", ti)
 
                     self._current["title"] = "Ch. " + num + " " + ch + ": " + ti
-                    self._current["image"] = self._images.get(words[1])
+                    self._current["image"] = self._images.get(zap_ch)
                     self._current["status"]  = "no status"
                     self._current["mode"]    = "TV"
 
@@ -663,6 +671,7 @@ class TivoDevice(MediaPlayerDevice):
             # Pad channel numbers to 4 chars to match values from Tivo device
             _ch = channelData['channelNo'].zfill(4)
             self._channels[_ch] = channelData['callSign']
+#            _LOGGER.warning("_ch " + _ch + " " + channelData['callSign'])
 
     def zapget_titles(self):
         # Decode program titles from zap raw data
