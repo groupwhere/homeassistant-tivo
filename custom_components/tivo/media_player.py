@@ -276,6 +276,7 @@ class TivoDevice(MediaPlayerDevice):
                     # subchannel?
                     if len(words) == 4:
                         channel = words[1].lstrip("0") + "." + words[2].lstrip("0")
+                        channel = channel.zfill(4)
                         status = words[3]
                     else:
                         channel = words[1].lstrip("0")
