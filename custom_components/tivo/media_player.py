@@ -253,63 +253,54 @@ class TivoDevice(MediaPlayerDevice):
         self.set_status(words)
 
     def set_status(self, words):
-#        _LOGGER.warning(words)
-
         self._is_standby = True
 
-        if words:
-            try:
-                # Sometimes tivo returns 'no_channel Video' from a status request.
-                if words[0] == 'no_channel':
-                    return
+        if not words:
+            _LOGGER.debug("device did not respond correctly...")
+            return
 
-                if words[0] == "CH_STATUS":
-                    #_LOGGER.warning("Got channel status")
-                    # subchannel?
-                    if len(words) == 4:
-                        channel = words[1].lstrip("0") + "." + words[2].lstrip("0")
-                        channel = channel.zfill(4)
-                        status = words[3]
-                    else:
-                        channel = words[1].lstrip("0")
-                        status = words[2]
-                    self._current["channel"] = channel
-                    self._current["title"]   = "Ch. " + channel
-                    self._current["status"]  = status
-                    self._current["mode"]    = "TV"
-                    # returns no image
-                    self._current["image"] = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
+        self._current["channel"] = "no channel"
+        self._current["title"]   = "no title"
+        self._current["status"]  = "no status"
+        self._current["mode"]    = "none"
+        # returns no image
+        self._current["image"] = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
 
-                if self.zapclient:
-                    zap_ch = channel.replace('-', '.')
-                    ch  = self.zapclient.get_callsign(zap_ch)
-                    self._current["channel"] = ch
-                    num = zap_ch.lstrip("0")
-                    ti  = self.zapclient.get_title(zap_ch)
-                    if self.debug:
-                        _LOGGER.warning("Channel:  %s", num)
-                        _LOGGER.warning("Callsign: %s", ch)
-                        _LOGGER.warning("Title:    %s", ti)
+        # Sometimes tivo returns 'no_channel Video' from a status request.
+        if words[0] == 'no_channel' or len(words) < 3:
+            return
 
-                    self._current["title"] = "Ch. {} {}: {}".format(num, ch, ti)
-                    self._current["image"] = self.zapclient.get_image_url(zap_ch)
-                    self._current["status"]  = "no status"
-                    self._current["mode"]    = "TV"
+        if words[0] == "CH_STATUS":
+            #_LOGGER.warning("Got channel status")
+            # subchannel?
+            if len(words) == 4:
+                channel = words[1].lstrip("0") + "." + words[2].lstrip("0")
+                channel = channel.zfill(4)
+                status = words[3]
+            else:
+                channel = words[1].lstrip("0")
+                status = words[2]
 
-                self._is_standby = False
+            self._current["channel"] = channel
+            self._current["title"]   = "Ch. {}".format(channel)
+            self._current["status"]  = status
+            self._current["mode"]    = "TV"
 
-            except IndexError:
-                self._current["channel"] = "no channel"
-                self._current["title"]   = "no title"
-                self._current["status"]  = "no status"
-                self._current["mode"]    = "none"
-                # returns no image
-                self._current["image"] = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
-                if self.debug:
-                    _LOGGER.warning("device did not respond correctly...")
-        else:
+        if self.zapclient:
+            zap_ch = channel.replace('-', '.')      # maybe not needed
+            ch  = self.zapclient.get_callsign(zap_ch)
+            self._current["channel"] = ch
+            num = zap_ch.lstrip("0")
+            ti  = self.zapclient.get_title(zap_ch)
             if self.debug:
-                _LOGGER.warning("device did not respond correctly...")
+                _LOGGER.warning("Channel:  %s", num)
+                _LOGGER.warning("Callsign: %s", ch)
+                _LOGGER.warning("Title:    %s", ti)
+
+            self._current["title"] = "Ch. {} {}: {}".format(num, ch, ti)
+            self._current["image"] = self.zapclient.get_image_url(zap_ch)
+
+        self._is_standby = False
 
     def send_code(self, code, cmdtype="IRCODE", extra=0, bufsize=1024):
         data = ""
@@ -421,18 +412,14 @@ class TivoDevice(MediaPlayerDevice):
         if self._current["mode"] == "TV":
             data = self.send_code('CHANNELUP')
             words = data.split()
-            self._current["channel"] = words[1]
-            self._current["title"]   = "Ch. " + words[1]
-            self._current["status"]  = words[2]
+            self.set_status(words)
 
     def media_ch_dn(self):
         """Channel down."""
         if self._current["mode"] == "TV":
             data = self.send_code('CHANNELDOWN')
             words = data.split()
-            self._current["channel"] = words[1]
-            self._current["title"]   = "Ch. " + words[1]
-            self._current["status"]  = words[2]
+            self.set_status(words)
 
     @property
     def media_content_id(self):
