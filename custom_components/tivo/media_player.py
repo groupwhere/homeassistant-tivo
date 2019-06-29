@@ -122,9 +122,12 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
                 _LOGGER.warning("update_status: %s", tivo)
             tivo.get_status()
 
+    def zap2it_update(event_time):
+        zapclient.update()
+
     track_time_interval(hass, update_status, SCAN_INTERVAL)
     if zapclient:
-        track_time_interval(hass, zapclient.zap_update, ZAP_SCAN_INTERVAL)
+        track_time_interval(hass, zap2it_update, ZAP_SCAN_INTERVAL)
 
     return True
 
@@ -279,18 +282,17 @@ class TivoDevice(MediaPlayerDevice):
 
                 if self.zapclient:
                     zap_ch = channel.replace('-', '.')
-                    ch  = self.zapclient.callsign(zap_ch)
+                    ch  = self.zapclient.get_callsign(zap_ch)
                     self._current["channel"] = ch
-                    num = str(zap_ch)
-                    num = num.lstrip("0")
-                    ti  = self.zapclient.title(zap_ch)
+                    num = zap_ch.lstrip("0")
+                    ti  = self.zapclient.get_title(zap_ch)
                     if self.debug:
                         _LOGGER.warning("Channel:  %s", num)
                         _LOGGER.warning("Callsign: %s", ch)
                         _LOGGER.warning("Title:    %s", ti)
 
-                    self._current["title"] = "Ch. " + num + " " + ch + ": " + ti
-                    self._current["image"] = self.zapclient.image(zap_ch)
+                    self._current["title"] = "Ch. {} {}: {}".format(num, ch, ti)
+                    self._current["image"] = self.zapclient.get_image_url(zap_ch)
                     self._current["status"]  = "no status"
                     self._current["mode"]    = "TV"
 
@@ -596,23 +598,21 @@ class Zap2ItClient:
         self._titles = {}
         self._images = {}
 
-        self.zapget_data()
-
-#        track_time_interval(hass, zap2it_update, ZAP_SCAN_INTERVAL)
+        self.update()
     
-    def callsign(self, ch):
+    def get_callsign(self, ch):
         return self._channels.get(ch)
 
-    def title(self, ch):
+    def get_title(self, ch):
         return self._titles.get(ch)
 
-    def image(self, ch):
+    def get_image_url(self, ch):
         return self._images.get(ch)
 
-    def zap_update(self):
-        self.zapget_data()
+    def update(self):
+        self.get_data()
 
-    def zaplogin(self):
+    def login(self):
         # Login and fetch a token
         host = 'https://tvlistings.zap2it.com/'
         loginpath = 'api/user/login'
@@ -638,7 +638,7 @@ class Zap2ItClient:
         self._country = self._zapprops['2003']
         (self._lineupId, self._device) = self._zapprops['2004'].split(':')
 
-    def zapget_data(self):
+    def get_data(self):
         #if self.debug:
         _LOGGER.warning("zapget_data called")
         self.zaplogin()
@@ -673,10 +673,10 @@ class Zap2ItClient:
         else:
             self._zapraw = json.loads(res.read().decode('utf8'))
 
-        self.zapget_channels()
-        self.zapget_titles()
+        self.get_channels()
+        self.get_titles()
 
-    def zapget_channels(self):
+    def get_channels(self):
         # Decode basic channel num to channel name from zap raw data
         if self.debug:
             _LOGGER.warning("zapget_channels called")
@@ -686,7 +686,7 @@ class Zap2ItClient:
             self._channels[_ch] = channelData['callSign']
 #            _LOGGER.warning("_ch " + _ch + " " + channelData['callSign'])
 
-    def zapget_titles(self):
+    def get_titles(self):
         # Decode program titles from zap raw data
         if self.debug:
             _LOGGER.warning("zapget_titles called")
