@@ -75,7 +75,11 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
 
     zapuser = config.get(CONF_ZAPUSER)
     zappass = config.get(CONF_ZAPPASS)
+    zapclient = None
     debug = config.get(CONF_DEBUG)
+
+    if zapuser and zappass:
+        zapclient = Zap2ItClient(zapuser, zappass, debug)
 
     if CONF_HOST in config:
         hosts.append([
@@ -96,12 +100,12 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
             # attempt to discover additional Tivo units
             device = 0
             for name, ip_addr in zc_hosts.items():
-                hosts.append([name + " TiVo", ip_addr, DEFAULT_PORT, device, zapuser, zappass, debug])
+                hosts.append([name + " TiVo", ip_addr, DEFAULT_PORT, device, zapclient, debug])
                 device = device + 1
         else:
             # bail out and just go forward with uPnP data
             if DEFAULT_DEVICE not in known_devices:
-                hosts.append([name, host, DEFAULT_PORT, DEFAULT_DEVICE, zapuser, zappass, debug])
+                hosts.append([name, host, DEFAULT_PORT, DEFAULT_DEVICE, zapclient, debug])
 
     tivos = []
 
@@ -118,15 +122,9 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
                 _LOGGER.warning("update_status: %s", tivo)
             tivo.get_status()
 
-    def zap2it_update(event_time):
-        for tivo in tivos:
-            if tivo.usezap:
-                if tivo.debug:
-                    _LOGGER.warning("zap2it_update: %s at %s", tivo, str(event_time))
-                tivo.zap_update()
-
     track_time_interval(hass, update_status, SCAN_INTERVAL)
-    track_time_interval(hass, zap2it_update, ZAP_SCAN_INTERVAL)
+    if zapclient:
+        track_time_interval(hass, zapclient.zap_update, ZAP_SCAN_INTERVAL)
 
     return True
 
@@ -208,19 +206,14 @@ def find_tivos_zc():
 class TivoDevice(MediaPlayerDevice):
     """Representation of a Tivo receiver on the network."""
 
-    def __init__(self, name, host, port, device, zapuser, zappass, debug):
+    def __init__(self, name, host, port, device, zapclient, debug):
         """Initialize the device."""
         self._name = name
         self._host = host
         self._port = port
 
-        self._zapuser = zapuser
-        self._zappass = zappass
-        self.usezap = False
+        self.zapclient = zapclient
 
-        self._channels = {}
-        self._titles = {}
-        self._images = {}
         self._is_standby = False
         self._current = {}
         self._ignore = {}
@@ -228,10 +221,6 @@ class TivoDevice(MediaPlayerDevice):
 
         debug = bool(int(debug))
         self.debug = debug
-
-        if zapuser and zappass:
-            self.usezap = True
-            self.zapget_data()
 
         self.get_status()
 
@@ -288,20 +277,20 @@ class TivoDevice(MediaPlayerDevice):
                     # returns no image
                     self._current["image"] = "https://tvlistings.zap2it.com/assets/images/noImage165x220.jpg"
 
-                if self.usezap:
+                if self.zapclient:
                     zap_ch = channel.replace('-', '.')
-                    ch  = str(self._channels.get(zap_ch))
+                    ch  = zapclient.callsign(zap_ch)
                     self._current["channel"] = ch
                     num = str(zap_ch)
                     num = num.lstrip("0")
-                    ti  = str(self._titles.get(zap_ch))
+                    ti  = zapclient.title(zap_ch)
                     if self.debug:
                         _LOGGER.warning("Channel:  %s", num)
                         _LOGGER.warning("Callsign: %s", ch)
                         _LOGGER.warning("Title:    %s", ti)
 
                     self._current["title"] = "Ch. " + num + " " + ch + ": " + ti
-                    self._current["image"] = self._images.get(zap_ch)
+                    self._current["image"] = zapclient.image(zap_ch)
                     self._current["status"]  = "no status"
                     self._current["mode"]    = "TV"
 
@@ -596,9 +585,32 @@ class TivoDevice(MediaPlayerDevice):
 
         self.get_status()
 
+class Zap2ItClient:
+
+    def __init__(zapuser, zappass, debug=False):
+        self._zapuser = zapuser
+        self._zappass = zappass
+        self.debug = debug
+
+        self._channels = {}
+        self._titles = {}
+        self._images = {}
+
+        self.zapget_data()
+
+#        track_time_interval(hass, zap2it_update, ZAP_SCAN_INTERVAL)
+    
+    def callsign(ch):
+        return self._channels.get(ch)
+
+    def title(ch):
+        return self._titles.get(ch)
+
+    def image(ch):
+        return self._images.get(ch)
+
     def zap_update(self):
-        if self.usezap:
-            self.zapget_data()
+        self.zapget_data()
 
     def zaplogin(self):
         # Login and fetch a token
@@ -753,4 +765,3 @@ class TivoDevice(MediaPlayerDevice):
         zparams['aid']         = 'gapzap'
 
         return zparams
-
