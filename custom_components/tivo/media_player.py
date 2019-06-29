@@ -587,7 +587,7 @@ class TivoDevice(MediaPlayerDevice):
 
 class Zap2ItClient:
 
-    def __init__(zapuser, zappass, debug=False):
+    def __init__(self, zapuser, zappass, debug=False):
         self._zapuser = zapuser
         self._zappass = zappass
         self.debug = debug
@@ -600,13 +600,13 @@ class Zap2ItClient:
 
 #        track_time_interval(hass, zap2it_update, ZAP_SCAN_INTERVAL)
     
-    def callsign(ch):
+    def callsign(self, ch):
         return self._channels.get(ch)
 
-    def title(ch):
+    def title(self, ch):
         return self._titles.get(ch)
 
-    def image(ch):
+    def image(self, ch):
         return self._images.get(ch)
 
     def zap_update(self):
