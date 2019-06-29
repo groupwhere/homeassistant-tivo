@@ -641,7 +641,7 @@ class Zap2ItClient:
     def get_data(self):
         #if self.debug:
         _LOGGER.warning("zapget_data called")
-        self.zaplogin()
+        self.login()
         now = int(time.time())
         self._channels = {}
         zap_params = self.get_zap_params()
