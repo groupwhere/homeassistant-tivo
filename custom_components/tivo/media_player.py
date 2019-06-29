@@ -279,18 +279,18 @@ class TivoDevice(MediaPlayerDevice):
 
                 if self.zapclient:
                     zap_ch = channel.replace('-', '.')
-                    ch  = zapclient.callsign(zap_ch)
+                    ch  = self.zapclient.callsign(zap_ch)
                     self._current["channel"] = ch
                     num = str(zap_ch)
                     num = num.lstrip("0")
-                    ti  = zapclient.title(zap_ch)
+                    ti  = self.zapclient.title(zap_ch)
                     if self.debug:
                         _LOGGER.warning("Channel:  %s", num)
                         _LOGGER.warning("Callsign: %s", ch)
                         _LOGGER.warning("Title:    %s", ti)
 
                     self._current["title"] = "Ch. " + num + " " + ch + ": " + ti
-                    self._current["image"] = zapclient.image(zap_ch)
+                    self._current["image"] = self.zapclient.image(zap_ch)
                     self._current["status"]  = "no status"
                     self._current["mode"]    = "TV"
 
