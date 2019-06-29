@@ -271,7 +271,6 @@ class TivoDevice(MediaPlayerDevice):
             return
 
         if words[0] == "CH_STATUS":
-            _LOGGER.info("Got channel status")
             # subchannel?
             if len(words) == 4:
                 channel = words[1].lstrip("0") + "." + words[2].lstrip("0")
