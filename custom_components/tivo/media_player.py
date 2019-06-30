@@ -497,14 +497,12 @@ class TivoDevice(MediaPlayerDevice):
         return "{} ({})".format(
             self._current['status'], self._current['channel'])
 
-    @property
     def turn_on(self):
         """Turn on the receiver. """
         if self._is_standby:
             self.send_code('STANDBY','IRCODE')
             self._is_standby = False
 
-    @property
     def turn_off(self):
         """Turn off the receiver. """
         if self._is_standby == False:
@@ -512,7 +510,6 @@ class TivoDevice(MediaPlayerDevice):
             self.send_code('STANDBY','IRCODE')
             self._is_standby = True
 
-    @property
     def media_play(self):
         """Send play command."""
         if self._is_standby:
@@ -520,7 +517,6 @@ class TivoDevice(MediaPlayerDevice):
 
         self.send_code('PLAY')
 
-    @property
     def media_pause(self):
         """Send pause command."""
         if self._is_standby:
@@ -528,7 +524,6 @@ class TivoDevice(MediaPlayerDevice):
 
         self.send_code('PAUSE', 'IRCODE', 0, 0)
 
-    @property
     def media_stop(self):
         """Send stop command. """
         if self._is_standby:
@@ -541,7 +536,6 @@ class TivoDevice(MediaPlayerDevice):
         words = data.split()
         return words[2]
 
-    @property
     def media_record(self):
         """ Start recording the current program """
         if self._is_standby:
