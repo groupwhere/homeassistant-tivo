@@ -87,8 +87,7 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
             config.get(CONF_HOST),
             config.get(CONF_PORT),
             config.get(CONF_DEVICE),
-            zapuser,
-            zappass,
+            zapclient,
             debug
         ])
 
