@@ -619,8 +619,8 @@ class Zap2ItClient:
         (self._lineupId, self._device) = self._zapprops['2004'].split(':')
 
     def get_data(self):
-        #if self.debug:
-        _LOGGER.debug("zapget_data called")
+        if self.debug:
+            _LOGGER.debug("zapget_data called")
         self.login()
         now = int(time.time())
         self._channels = {}
