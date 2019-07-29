@@ -277,6 +277,7 @@ class TivoDevice(MediaPlayerDevice):
                 status = words[3]
             else:
                 channel = words[1].lstrip("0")
+                channel = channel.zfill(4)
                 status = words[2]
 
             self._current["channel"] = channel
